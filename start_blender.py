@@ -124,6 +124,26 @@ def local_build_candidates():
                 yield build_dir / bin_dir / exe_name
 
 
+def local_portable_candidates():
+    root = repo_root()
+    roots = (
+        root / "blender-portable",
+        root.parent / "blender-portable",
+        root / "portable_blender",
+        root.parent / "portable_blender",
+        Path.home() / "blender-portable",
+    )
+    child_patterns = ("blender-*", "Blender *", "Blender", "current")
+
+    for base_dir in roots:
+        for exe_name in executable_names():
+            yield base_dir / exe_name
+        for child_pattern in child_patterns:
+            for child_dir in base_dir.glob(child_pattern):
+                for exe_name in executable_names():
+                    yield child_dir / exe_name
+
+
 def windows_install_candidates():
     if os.name != "nt":
         return
@@ -176,6 +196,7 @@ def resolve_blender(cli_path: str | None, logger: logging.Logger) -> Path:
     searches = (
         path_candidates(),
         local_build_candidates(),
+        local_portable_candidates(),
         windows_install_candidates() or (),
         macos_install_candidates() or (),
     )
