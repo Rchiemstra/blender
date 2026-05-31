@@ -21,3 +21,6 @@
 [submodule "tools/blender_mcp"]
 	path = tools/blender_mcp
 	url = https://github.com/Rchiemstra/blender_mcp.git
+[submodule "tools/blender_read_mode"]
+	path = tools/blender_read_mode
+	url = https://github.com/Rchiemstra/blender_read_mode.git
