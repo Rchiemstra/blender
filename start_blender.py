@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start Blender with the bundled Blender MCP bridge enabled.
+"""Start Blender with the bundled Blender MCP bridge and BlendGraph Tracker enabled.
 
 This script intentionally uses only Python standard library modules.
 """
@@ -225,7 +225,7 @@ def command_to_string(command: list[str]) -> str:
 
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(
-        description="Start Blender with the Blender MCP bridge enabled.",
+        description="Start Blender with the Blender MCP bridge and BlendGraph Tracker enabled.",
     )
     parser.add_argument("--blender", help="Path to blender.exe or a directory containing it.")
     parser.add_argument("--background", action="store_true", help="Run Blender headless.")
@@ -246,7 +246,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
 def main(argv: list[str]) -> int:
     args, blender_args = parse_args(argv)
     logger = configure_logging(args.log_file, args.verbose)
-    logger.info("Blender MCP launcher started.")
+    logger.info("Blender MCP and BlendGraph Tracker launcher started.")
 
     try:
         startup_script = mcp_startup_script()

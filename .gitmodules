@@ -24,3 +24,6 @@
 [submodule "tools/blender_read_mode"]
 	path = tools/blender_read_mode
 	url = https://github.com/Rchiemstra/blender_read_mode.git
+[submodule "tools/blender_graph_tracker"]
+	path = tools/blender_graph_tracker
+	url = https://github.com/Rchiemstra/blender_graph_tracker.git
