@@ -1,0 +1,9 @@
+*
+!blender_mcp/
+blender_mcp/*
+!blender_mcp/blender_mcp/
+!blender_mcp/blender_mcp/**
+!blender_mcp/tests/
+!blender_mcp/tests/**
+!blender_read_mode/
+!blender_read_mode/**
