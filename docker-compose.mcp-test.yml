@@ -1,0 +1,89 @@
+# Blender MCP unified Docker test stack.
+# Suites are separate services sharing one image so a clean build is reusable.
+# The runner script (scripts/run_blender_mcp_docker_tests.py) drives these.
+#
+# Paths are relative to this compose file (the repo root).
+
+services:
+  test-unit:
+    build:
+      context: .
+      dockerfile: docker/mcp-test.Dockerfile
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/test_p0.py -v --junitxml=/artifacts/unit/junit.xml || python3 -m unittest tools.blender_mcp.tests.test_p0 -v"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+    environment:
+      - BLENDER_MCP_TEST_NO_BPY=1
+
+  test-blender-integration:
+    image: blender-mcp-test:latest
+    build:
+      context: .
+      dockerfile: docker/mcp-test.Dockerfile
+    command: ["bash", "-lc", "blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_read_mode_e2e.py 2>&1 | tee /artifacts/blender-integration/run.log"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+    environment:
+      - PYTHONPATH=/opt/blender_mcp/tools
+
+  test-e2e:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/e2e -v --junitxml=/artifacts/e2e/junit.xml || echo 'e2e suite pending phase 1 implementation'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+    environment:
+      - PYTHONPATH=/opt/blender_mcp/tools
+
+  test-render:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "echo 'render worker suite pending phase 6'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  test-vision:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/test_vision_contract.py -v --junitxml=/artifacts/vision/junit.xml || echo 'vision suite pending phase 3'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  test-asset:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "echo 'asset suite pending phase 5'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  test-failure:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/test_failure_injection.py -v --junitxml=/artifacts/failure/junit.xml || echo 'failure suite pending phase 1'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  test-acceptance:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "echo 'acceptance scenarios pending later phases'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  test-soak:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "echo 'soak suite pending later phases'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+
+  # Optional GPU profile. Not required for the mandatory suite.
+  # Enable with: python scripts/run_blender_mcp_docker_tests.py --suite gpu
+  # Requires NVIDIA Container Toolkit on the host.
+  test-gpu:
+    image: blender-mcp-test:latest
+    command: ["bash", "-lc", "echo 'optional GPU suite: requires NVIDIA Container Toolkit'"]
+    volumes:
+      - ./artifacts/docker-tests:/artifacts
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: ["gpu"]
