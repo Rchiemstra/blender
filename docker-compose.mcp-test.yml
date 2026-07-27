@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_vision_contract.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
@@ -43,9 +43,12 @@ services:
 
   test-vision:
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/test_vision_contract.py -v --junitxml=/artifacts/vision/junit.xml || echo 'vision suite pending phase 3'"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/vision && python3 -m pytest tools/blender_mcp/tests/test_vision_contract.py -v --timeout=60 --junitxml=/artifacts/vision/junit.xml"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
+    environment:
+      - BLENDER_MCP_VISION_MODE=sidecar
+      - BLENDER_MCP_VISION_PROVIDER=fake
 
   test-asset:
     image: blender-mcp-test:latest
