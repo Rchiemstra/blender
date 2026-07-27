@@ -174,3 +174,34 @@ Phases are tracked in dependency order. Evidence comes from executed commands.
 - Phase 9 (hardening, benchmarks, full acceptance scenarios)
 
 The Docker suite has placeholder services for render/asset/failure/acceptance/soak that emit "pending" until these phases land.
+
+---
+
+## Follow-up: FBX export failure (diagnose + long-term fix + tests)
+
+**Problem:** `EXPORT_SCENE_OT_fbx.execute` raised "Python script error" when the agent exported FBX via the `execute_python` escape hatch (scripts calling `bpy.ops.export_scene.fbx(filepath=...)` with default args). The traceback was invisible: `execute_python` captured it into the JSON-RPC envelope returned to the agent, and the user's category-filtered console dropped Blender's un-prefixed traceback lines.
+
+**Diagnosis:** Reproduced FBX export against saved blend files (`cocker_spaniel_07_final_master.blend`, `cocker_head_01_blockout.blend`) in `blender --background`: export **succeeds** (5.4 MB FBX), so the live failure is in-memory scene-state-specific. Root cause is captured on the next occurrence via the new traceback surfacing.
+
+**Implemented (submodule `tools/blender_mcp`, commit `800c0e4`):**
+- `blender_executor.py`: surface `execute_python` exceptions to the `blender_mcp.addon` logger (console + addon log) in both the import-failure and exec-failure paths; envelope behavior unchanged.
+- `schemas/exports.py` (new): typed `ExportRequest` schema, format->operator registry, per-format supported object-type allowlists, validation, path-policy check, object-type filtering (excludes unsupported types with a warning — the likely root-cause workaround), `run_export` with structured `EXPORT_FAILED` errors and full traceback logging.
+- `protocol/capabilities.py`: `is_export_supported` / `supported_exporters` reusing the Import-Export addon probe.
+- `protocol/errors.py`: `EXPORT_FAILED`, `CAPABILITY_DISABLED`, `UNSUPPORTED_OBJECT_TYPE` codes.
+- `bridge_handlers.py`: `scene.export` typed handler.
+- `bridge.py`: route known typed v1 methods through `bridge_handlers` via the P0 `MainThreadCommandQueue` (with a v1->P0 envelope adapter) so the existing P0 socket bridge exposes typed tools.
+- `server.py`: `scene_export` MCP tool definition + `tools/call` dispatch.
+
+**Tests:**
+- `tests/test_exports.py` (new, 20 CPython unit tests): validation, capability gating, path policy, object-type filtering, `run_export` success/failure, v1->P0 envelope, typed dispatch.
+- `tests/test_p0.py`: `execute_python` traceback-logging tests (2).
+- `tests/e2e/test_scene_export_e2e.py` (new): Blender integration — MESH + CURVE -> FBX via `scene.export`, asserts exclusion + warning + file written (2 tests).
+
+**Docker commands run:**
+- `python scripts/run_blender_mcp_docker_tests.py --suite unit --rebuild` -> **passed** (incl. new `test_exports.py`)
+- `python scripts/run_blender_mcp_docker_tests.py --suite e2e` -> **6 passed** (incl. 1,000-request soak)
+- `python scripts/run_blender_mcp_docker_tests.py --suite blender-integration` -> **passed** (read_mode + scene_export e2e; `scene_export.log` shows `Ran 2 tests ... OK`)
+
+**Backward compatibility:** `execute_python` unchanged; typed methods routed only when the method name is registered in `bridge_handlers`, else `UnknownMethod` (preserves prior behavior). `tools/list` now lists `scene_export` alongside `execute_python`.
+
+**Known limitation / external validation gap:** The exact live in-memory trigger of the original FBX error was not reproducible from saved files; the typed tool defends against the most likely cause (unsupported object types) and surfaces any future failure via the new traceback logging.

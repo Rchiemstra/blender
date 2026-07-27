@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_phase4_transactions.py tools/blender_mcp/tests/test_phase5_pbr_asset.py tools/blender_mcp/tests/test_vision_contract.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_phase4_transactions.py tools/blender_mcp/tests/test_phase5_pbr_asset.py tools/blender_mcp/tests/test_vision_contract.py tools/blender_mcp/tests/test_p0.py tools/blender_mcp/tests/test_exports.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
-    command: ["bash", "-lc", "mkdir -p /artifacts/blender-integration && blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_read_mode_e2e.py 2>&1 | tee /artifacts/blender-integration/run.log"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/blender-integration && blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_read_mode_e2e.py > /artifacts/blender-integration/read_mode.log 2>&1 || exit 1 && blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_scene_export_e2e.py > /artifacts/blender-integration/scene_export.log 2>&1 || exit 1"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
