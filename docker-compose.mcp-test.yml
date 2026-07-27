@@ -21,11 +21,11 @@ services:
     build:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
-    command: ["bash", "-lc", "blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_read_mode_e2e.py 2>&1 | tee /artifacts/blender-integration/run.log"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/blender-integration && blender --factory-startup --background --python tools/blender_mcp/tests/e2e/test_read_mode_e2e.py 2>&1 | tee /artifacts/blender-integration/run.log"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
-      - PYTHONPATH=/opt/blender_mcp/tools
+      - PYTHONPATH=/opt/blender_mcp/tools/blender_mcp:/opt/blender_mcp/tools:/opt/blender_mcp/tools/blender_graph_tracker
 
   test-e2e:
     image: blender-mcp-test:latest
