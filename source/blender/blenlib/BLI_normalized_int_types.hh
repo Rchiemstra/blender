@@ -34,10 +34,6 @@ template<typename T, int SizeX, int SizeY> struct NormalizedIntVec<T, 2, SizeX, 
   constexpr static T x_max = T((1u << (SizeX - int(is_signed))) - 1);
   constexpr static T y_max = T((1u << (SizeY - int(is_signed))) - 1);
 
-  constexpr static bool is_signed = std::is_signed_v<T>;
-  constexpr static T x_max = T((1u << (SizeX - int(is_signed))) - 1);
-  constexpr static T y_max = T((1u << (SizeY - int(is_signed))) - 1);
-
   NormalizedIntVec() = default;
   constexpr NormalizedIntVec(IntVecT value) : x(value.x), y(value.y) {}
 
@@ -82,12 +78,6 @@ struct NormalizedIntVec<T, 4, SizeX, SizeY, SizeZ, SizeW> {
   T z : SizeZ;
   T w : SizeW;
 #endif
-
-  constexpr static bool is_signed = std::is_signed_v<T>;
-  constexpr static T x_max = T((1u << (SizeX - int(is_signed))) - 1);
-  constexpr static T y_max = T((1u << (SizeY - int(is_signed))) - 1);
-  constexpr static T z_max = T((1u << (SizeZ - int(is_signed))) - 1);
-  constexpr static T w_max = T((1u << (SizeW - int(is_signed))) - 1);
 
   constexpr static bool is_signed = std::is_signed_v<T>;
   constexpr static T x_max = T((1u << (SizeX - int(is_signed))) - 1);
