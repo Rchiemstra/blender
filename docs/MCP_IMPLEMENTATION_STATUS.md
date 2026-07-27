@@ -143,10 +143,31 @@ Phases are tracked in dependency order. Evidence comes from executed commands.
 
 ---
 
-## Phases 5–9 — Not yet implemented
+## Phase 5 — PBR materials and external asset acquisition
+
+**Status:** complete (PBR builder + provider abstraction). Tests pass in Docker.
+
+**Implemented:**
+- `blender_mcp/schemas/pbr_material.py`: version-adapted PBR material builder. Semantic detection from filenames (base_color, roughness, metallic, normal, AO, displacement, emissive, opacity, clearcoat, subsurface). Correct color-space handling (sRGB for color, Non-Color for data maps). Normal-map convention detection (DirectX vs OpenGL) with green-channel flip for DirectX. Packed ORM handling. Mapping scale. Displacement opt-in. `MATERIAL_EXISTS` guard (never silently overwrites). Principled BSDF node wiring with Blender 3.x/4.x input-name fallbacks.
+- `blender_mcp/services/asset_provider.py`: `AssetProvider` base + `MockAssetProvider` (deterministic, no network, fixture bytes, checksum verification, cancellable fetch with progress, CC0 license metadata). Provider registry (`register_provider`, `get_provider`, `list_providers`). `AssetCache` (content-addressed by sha256, reuse on hit, manifest).
+- `blender_mcp/protocol/errors.py`: added `MATERIAL_EXISTS` and `ASSET_NOT_FOUND` error codes.
+
+**Files changed (submodule `tools/blender_mcp`):** `schemas/pbr_material.py`, `services/asset_provider.py`, `protocol/errors.py`, `tests/test_phase5_pbr_asset.py`.
+
+**Docker commands run:**
+- `docker compose run --rm test-unit` → **129 passed in 1.06s** (28 protocol + 24 schema + 7 handler + 14 transaction + 17 PBR/asset + 19 vision + 20 P0)
+
+**Tests:** `test_phase5_pbr_asset.py`: 17 tests — semantic detection (base color variants, roughness/metallic, normal convention, AO/displacement/emissive, unknown), color spaces (sRGB for color, Non-Color for data), texture slot building + overrides, mock provider (available, catalog, fetch+verify, missing asset, cancellation), asset cache (store+reuse, manifest).
+
+**Known limitations:** The PBR builder's bpy node-wiring is implemented but not yet exercised against real bpy in a Docker integration test (needs Blender + fixture textures). Poly Haven migration to this architecture is designed but the live adapter is not yet wired. Live provider smoke tests are an optional profile (no real credentials in Docker).
+
+**Backward-compatibility impact:** none — new modules only.
+
+---
+
+## Phases 6–9 — Not yet implemented
 
 **Status:** pending. Architecture designed in the plan but not yet coded:
-- Phase 5 (PBR material builder, asset provider abstraction, Poly Haven, import normalization)
 - Phase 6 (camera/lighting/color/render jobs, background workers, manifests)
 - Phase 7 (photorealism validators, reference comparison, review loop)
 - Phase 8 (optional Sketchfab/Hyper3D/Hunyuan providers)
