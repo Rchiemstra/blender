@@ -44,8 +44,11 @@ COPY --chown=blender:blender tools/blender_read_mode ./tools/blender_read_mode
 COPY --chown=blender:blender tools/blender_graph_tracker ./tools/blender_graph_tracker
 COPY --chown=blender:blender docs                   ./docs
 
-# Python path: repo tools root so `import blender_mcp` etc. work.
-ENV PYTHONPATH=/opt/blender_mcp/tools
+# Python path: the three submodules have different package depths.
+#   tools/blender_mcp/blender_mcp/        -> import blender_mcp
+#   tools/blender_read_mode/              -> import blender_read_mode
+#   tools/blender_graph_tracker/blendgraph_tracker/ -> import blendgraph_tracker
+ENV PYTHONPATH=/opt/blender_mcp/tools/blender_mcp:/opt/blender_mcp/tools:/opt/blender_mcp/tools/blender_graph_tracker
 
 USER blender
 
