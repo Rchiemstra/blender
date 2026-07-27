@@ -121,10 +121,31 @@ Phases are tracked in dependency order. Evidence comes from executed commands.
 
 ---
 
-## Phases 4–9 — Not yet implemented
+## Phase 4 — Transactions and typed core mutations
+
+**Status:** complete (transaction engine + typed operations). Tests pass in Docker.
+
+**Implemented:**
+- `blender_mcp/schemas/operations.py`: discriminated-union operation validators for `object.transform`, `object.create_primitive`, `object.duplicate`, `object.parent`, `object.rename`, `object.set_visibility`, `object.delete`, `collection.create`, `collection.move_object`. `validate_batch` aggregates per-op errors with indices.
+- `blender_mcp/schemas/transactions.py`: `TransactionManager` — idempotency replay, batch validation (fails fast), expected-scene-revision precondition (`STALE_SCENE_REVISION`), dry-run (returns planned change set without applying), atomic apply with rollback on failure, change event recording with exact change set + provenance, `TransactionResult` with `status` (committed/rolled_back/dry_run/rejected), `changed_refs`, `warnings`, `duration_ms`. Default applier runs on the main thread with bpy; raises `BridgeError` on per-op failure so the manager records rollback.
+- `blender_mcp/bridge_handlers.py`: added `scene.apply` and `scene.dry_run` handlers wired into the v1 dispatcher.
+
+**Files changed (submodule `tools/blender_mcp`):** `schemas/operations.py`, `schemas/transactions.py`, `bridge_handlers.py`, `tests/test_phase4_transactions.py`.
+
+**Docker commands run:**
+- `docker compose run --rm test-unit` → **112 passed in 0.84s** (28 protocol + 24 schema + 7 handler + 14 transaction + 19 vision + 20 P0)
+
+**Tests:** `test_phase4_transactions.py`: 14 tests — operation validation (valid/invalid transform, create primitive, unknown op, batch aggregation), transaction state machine (dry-run no-increment, commit increments revision, stale revision rejected, validation failure before apply, rollback on apply failure, idempotency replay, change event recorded).
+
+**Known limitations:** The default applier relies on Blender's undo stack for rollback of partial state; an explicit snapshot-based rollback (Phase 6 immutable snapshots) is a future enhancement. Modifier/material/camera/lighting typed operations use the same contract but are not yet implemented (Phases 5-6). A Blender-integration e2e that applies a real transaction against bpy is a remaining Phase 4 integration step.
+
+**Backward-compatibility impact:** none — new modules only.
+
+---
+
+## Phases 5–9 — Not yet implemented
 
 **Status:** pending. Architecture designed in the plan but not yet coded:
-- Phase 4 (transactions, typed mutations, dry-run, rollback, idempotency)
 - Phase 5 (PBR material builder, asset provider abstraction, Poly Haven, import normalization)
 - Phase 6 (camera/lighting/color/render jobs, background workers, manifests)
 - Phase 7 (photorealism validators, reference comparison, review loop)
