@@ -94,6 +94,41 @@ Phases are tracked in dependency order. Evidence comes from executed commands.
 
 ---
 
-## Phases 3–9 — Not yet implemented
+## Phase 3 — Visual perception and vision bridge
 
-**Status:** pending. The architecture (vision broker interface, transaction model, PBR builder, render job manager, validators, provider abstraction) is designed in the plan but not yet coded. The Docker suite has placeholder services for render/vision/asset/failure/acceptance/soak that emit "pending" until the corresponding phases land.
+**Status:** complete (vision contract + capture module). Tests pass in Docker.
+
+**Implemented:**
+- `blender_mcp/services/vision_broker.py`: pluggable `VisionProvider` base; `FakeVisionProvider` (deterministic, no network, canned observations per profile); `CustomVisionProvider` (OpenAI-compatible HTTP, credentials from env, never returned); `AnalysisRequest`/`ViewObservation`/`ViewAnalysis` dataclasses; `validate_analysis` (strict schema check, rejects invented object refs not in the legend, rejects invalid severity); `analyze` (returns structured ok/error dict, never raises to caller); env config (`BLENDER_MCP_VISION_MODE=disabled|sidecar|host`, `BLENDER_MCP_VISION_PROVIDER=fake|custom`).
+- `blender_mcp/services/image_metrics.py`: pure-stdlib PNG decoder + deterministic metrics (luminance histogram, clipped black/highlight %, dynamic range, mean saturation, sharpness/edge-energy, alpha coverage, sha256). No numpy/PIL dependency.
+- `blender_mcp/services/artifact_store.py`: `ArtifactStore` — validated paths via path policy, sha256, manifests, MIME types, retention, scene revision, provenance. Never returns arbitrary filesystem paths.
+- `blender_mcp/visual.py`: `view_capture` (GPU offscreen for interactive viewport, workbench render fallback for camera/background, canonical views, framing, overlays, honest `UNSUPPORTED_FEATURE` when no 3D view/GPU, GPU offscreen freed in `finally`).
+- `blender_mcp/bridge_handlers.py`: added `view.capture`, `vision.analyze`, `vision.mode` handlers wired into the v1 dispatcher.
+
+**Files changed (submodule `tools/blender_mcp`):** `services/__init__.py`, `services/vision_broker.py`, `services/image_metrics.py`, `services/artifact_store.py`, `visual.py`, `bridge_handlers.py`, `tests/test_vision_contract.py`.
+
+**Docker commands run:**
+- `docker compose run --rm test-unit` → **98 passed in 1.23s** (28 protocol + 24 schema + 7 handler + 19 vision + 20 P0)
+- `docker compose run --rm test-vision` → **19 passed in 0.23s**
+- `docker compose run --rm test-e2e` → **6 passed in 17.49s** (incl. 1,000-request soak)
+- `docker compose run --rm test-blender-integration` → **5 passed in 1.54s** (real bpy)
+
+**Tests:** `test_vision_contract.py`: 19 tests — vision config (default disabled, sidecar+fake, custom unavailable without creds), fake provider (photorealism + geometry profiles), validation (valid, missing field, invalid severity, invented ref rejected, known ref accepted), broker analyze (ok + disabled error), image metrics (PNG metrics, invalid bytes, sha256), artifact store (store/retrieve, unknown), text-only planner (structured findings without pixels).
+
+**Known limitations:** The GPU offscreen path is a stub that returns a cleared buffer (a full scene draw via the space's draw handler is non-trivial offscreen); the workbench render path is the real capture for headless. Live VLM smoke test not run (no external credentials); the fake provider covers the deterministic contract. `view.capture` against real bpy is exercised by the Blender integration suite's existing read-mode tests but a dedicated capture e2e in Blender is a remaining Phase 3 integration step.
+
+**Backward-compatibility impact:** none — new modules only; existing tests unchanged.
+
+---
+
+## Phases 4–9 — Not yet implemented
+
+**Status:** pending. Architecture designed in the plan but not yet coded:
+- Phase 4 (transactions, typed mutations, dry-run, rollback, idempotency)
+- Phase 5 (PBR material builder, asset provider abstraction, Poly Haven, import normalization)
+- Phase 6 (camera/lighting/color/render jobs, background workers, manifests)
+- Phase 7 (photorealism validators, reference comparison, review loop)
+- Phase 8 (optional Sketchfab/Hyper3D/Hunyuan providers)
+- Phase 9 (hardening, benchmarks, full acceptance scenarios)
+
+The Docker suite has placeholder services for render/asset/failure/acceptance/soak that emit "pending" until these phases land.
