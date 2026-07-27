@@ -36,7 +36,45 @@ def mcp_startup_script() -> Path:
 
 
 def default_log_file() -> Path:
-    return repo_root() / "tools" / "blender_mcp" / "logs" / "start_blender.log"
+    return repo_root() / "logs" / "start_blender.log"
+
+
+def ensure_submodules(logger: logging.Logger) -> Path:
+    startup_script = mcp_startup_script()
+    if startup_script.is_file():
+        return startup_script
+
+    logger.info("MCP startup script not found. Attempting to initialize git submodules...")
+    git_bin = shutil.which("git")
+    if git_bin:
+        try:
+            res = subprocess.run(
+                [
+                    git_bin,
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--recursive",
+                    "tools/blender_mcp",
+                    "tools/blender_graph_tracker",
+                    "tools/blender_read_mode",
+                ],
+                cwd=str(repo_root()),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if res.returncode == 0 and startup_script.is_file():
+                logger.info("Git submodules initialized successfully.")
+                return startup_script
+        except Exception as exc:
+            logger.debug("Failed to run git submodule update: %s", exc)
+
+    raise LauncherError(
+        f"MCP startup script was not found: {startup_script}\n"
+        "Please initialize git submodules by running:\n"
+        "  git submodule update --init --recursive tools/blender_mcp tools/blender_graph_tracker tools/blender_read_mode"
+    )
 
 
 def configure_logging(log_file: str, verbose: bool) -> logging.Logger:
@@ -175,7 +213,124 @@ def macos_install_candidates():
         yield path / "Contents" / "MacOS" / "Blender"
 
 
-def resolve_blender(cli_path: str | None, logger: logging.Logger) -> Path:
+def cmake_bin_candidates() -> list[Path]:
+    root = repo_root()
+    search_dirs = (
+        root.parent,
+        root,
+        root.parent / "cmake",
+        Path.home(),
+    )
+    patterns = ("cmake-*", "CMake-*", "cmake", "CMake")
+    candidates = []
+
+    existing_cmake = shutil.which("cmake")
+    if existing_cmake:
+        candidates.append(Path(existing_cmake).parent)
+
+    for base in search_dirs:
+        if not base.is_dir():
+            continue
+        for pattern in patterns:
+            for match in base.glob(pattern):
+                if match.is_dir():
+                    bin_dir = match / "bin"
+                    exe_name = "cmake.exe" if os.name == "nt" else "cmake"
+                    if (bin_dir / exe_name).is_file():
+                        candidates.append(bin_dir)
+                    elif (match / exe_name).is_file():
+                        candidates.append(match)
+
+    return list(unique_paths(candidates))
+
+
+def prepare_build_env(logger: logging.Logger) -> dict[str, str]:
+    env = os.environ.copy()
+    existing_cmake = shutil.which("cmake", path=env.get("PATH"))
+    if not existing_cmake:
+        candidates = cmake_bin_candidates()
+        if candidates:
+            cmake_dir = candidates[0]
+            logger.info("Found CMake at: %s (adding to PATH)", cmake_dir)
+            env["PATH"] = str(cmake_dir) + os.pathsep + env.get("PATH", "")
+        else:
+            logger.warning("No CMake installation found in PATH or adjacent directories.")
+    return env
+
+
+def detect_vs_build_tools_arg() -> list[str]:
+    if os.name != "nt":
+        return []
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if vswhere.is_file():
+        try:
+            res_ide = subprocess.run(
+                [str(vswhere), "-latest", "-version", "[17.0,18.0)", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if not res_ide.stdout.strip():
+                res_bt = subprocess.run(
+                    [str(vswhere), "-latest", "-products", "Microsoft.VisualStudio.Product.BuildTools", "-version", "[17.0,18.0)", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                if res_bt.stdout.strip():
+                    return ["2022b"]
+        except Exception:
+            pass
+    return []
+
+
+def trigger_build(logger: logging.Logger, dry_run: bool = False) -> None:
+    logger.info("No Blender executable found. Attempting to build Blender...")
+    root = repo_root()
+    if os.name == "nt":
+        make_bat = root / "make.bat"
+        if not make_bat.is_file():
+            raise LauncherError(f"Cannot build Blender: {make_bat} was not found.")
+        command = ["cmd.exe", "/c", str(make_bat)] + detect_vs_build_tools_arg()
+    else:
+        make_bin = shutil.which("make")
+        if make_bin:
+            command = [make_bin]
+        else:
+            make_bat = root / "make.bat"
+            if make_bat.is_file():
+                command = [str(make_bat)]
+            else:
+                raise LauncherError("Cannot build Blender: 'make' command was not found.")
+
+    env = prepare_build_env(logger)
+
+    logger.info("Build command: %s", command_to_string(command))
+    if dry_run:
+        logger.info("Dry run enabled; Blender build was not executed.")
+        return
+
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(root),
+            env=env,
+            text=True,
+        )
+        if completed.returncode != 0:
+            raise LauncherError(f"Blender build failed with return code {completed.returncode}.")
+    except Exception as exc:
+        if isinstance(exc, LauncherError):
+            raise
+        raise LauncherError(f"Failed to execute Blender build: {exc}")
+
+
+def resolve_blender(
+    cli_path: str | None,
+    logger: logging.Logger,
+    allow_build: bool = True,
+    dry_run: bool = False,
+) -> Path:
     if cli_path:
         for candidate in unique_paths(expand_candidate(cli_path)):
             logger.debug("Checking --blender candidate: %s", candidate)
@@ -193,26 +348,42 @@ def resolve_blender(cli_path: str | None, logger: logging.Logger) -> Path:
                 return candidate
         logger.warning("%s is set but no Blender executable was found there: %s", env_name, env_value)
 
-    searches = (
-        path_candidates(),
-        local_build_candidates(),
-        local_portable_candidates(),
-        windows_install_candidates() or (),
-        macos_install_candidates() or (),
-    )
-    checked = []
-    for search in searches:
-        for candidate in unique_paths(search):
-            checked.append(candidate)
-            logger.debug("Checking candidate: %s", candidate)
-            if candidate.is_file():
-                return candidate
+    def find_existing() -> tuple[Path | None, list[Path]]:
+        searches = (
+            path_candidates(),
+            local_build_candidates(),
+            local_portable_candidates(),
+            windows_install_candidates() or (),
+            macos_install_candidates() or (),
+        )
+        checked = []
+        for search in searches:
+            for candidate in unique_paths(search):
+                checked.append(candidate)
+                logger.debug("Checking candidate: %s", candidate)
+                if candidate.is_file():
+                    return candidate, checked
+        return None, checked
+
+    found, checked = find_existing()
+    if found:
+        return found
+
+    if allow_build:
+        trigger_build(logger, dry_run=dry_run)
+        if dry_run:
+            return repo_root().parent / "build_windows" / "bin" / "Release" / "blender.exe"
+        found_after_build, checked_after_build = find_existing()
+        if found_after_build:
+            return found_after_build
+        checked.extend(checked_after_build)
 
     checked_text = "\n".join(f"  - {path}" for path in checked[:60])
     if len(checked) > 60:
         checked_text += f"\n  - ... {len(checked) - 60} more"
     raise LauncherError(
-        "No Blender executable was found. Pass --blender PATH or set BLENDER_EXECUTABLE.\n"
+        "No Blender executable was found and building did not produce a binary.\n"
+        "Pass --blender PATH or set BLENDER_EXECUTABLE.\n"
         f"Checked:\n{checked_text}"
     )
 
@@ -236,6 +407,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--cwd", help="Working directory for Blender.")
     parser.add_argument("--log-file", default=str(default_log_file()), help="Launcher log file.")
     parser.add_argument("--dry-run", action="store_true", help="Print the Blender command without starting it.")
+    parser.add_argument("--build", action="store_true", help="Force building Blender before starting.")
+    parser.add_argument("--no-build", action="store_true", help="Do not automatically build Blender if no executable is found.")
     parser.add_argument("--verbose", action="store_true", help="Print debug logs to the console.")
     args, blender_args = parser.parse_known_args(argv)
     if blender_args and blender_args[0] == "--":
@@ -249,11 +422,15 @@ def main(argv: list[str]) -> int:
     logger.info("Blender MCP and BlendGraph Tracker launcher started.")
 
     try:
-        startup_script = mcp_startup_script()
-        if not startup_script.is_file():
-            raise LauncherError(f"MCP startup script was not found: {startup_script}")
-
-        blender_path = resolve_blender(args.blender, logger)
+        startup_script = ensure_submodules(logger)
+        if args.build and not args.dry_run:
+            trigger_build(logger, dry_run=args.dry_run)
+        blender_path = resolve_blender(
+            args.blender,
+            logger,
+            allow_build=not args.no_build,
+            dry_run=args.dry_run,
+        )
         command = [str(blender_path)]
         if args.background:
             command.append("--background")
