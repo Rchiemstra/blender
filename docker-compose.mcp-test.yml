@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_vision_contract.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_phase2_schemas.py tools/blender_mcp/tests/test_phase2_handlers.py tools/blender_mcp/tests/test_phase4_transactions.py tools/blender_mcp/tests/test_vision_contract.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
