@@ -1,6 +1,9 @@
 # generic files to ignore
 .*
 
+# MCP test infrastructure: keep the docker build context filter tracked.
+!.dockerignore
+
 # python temp paths
 __pycache__/
 *.py[cod]
@@ -89,3 +92,7 @@ compile_commands.json
 blendcache_*
 *.blend1
 *.blend2
+
+# Launcher logs
+/logs/
+

@@ -284,6 +284,127 @@ def detect_vs_build_tools_arg() -> list[str]:
     return []
 
 
+def vs_install_path() -> Path | None:
+    """Locate the latest Visual Studio 2022 installation directory via vswhere.
+
+    Returns the ``installationPath`` (e.g. ``C:\\Program Files\\Microsoft Visual Studio\\2022\\Community``)
+    or ``None`` if VS 2022 with the VC tools is not installed.
+    """
+    if os.name != "nt":
+        return None
+    vswhere = Path(
+        os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")
+    ) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        return None
+    try:
+        res = subprocess.run(
+            [
+                str(vswhere),
+                "-latest",
+                "-version", "[17.0,18.0)",
+                "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property", "installationPath",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        path = res.stdout.strip()
+        if not path:
+            # Fall back to Build Tools product if the IDE is not installed.
+            res = subprocess.run(
+                [
+                    str(vswhere),
+                    "-latest",
+                    "-products", "Microsoft.VisualStudio.Product.BuildTools",
+                    "-version", "[17.0,18.0)",
+                    "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                    "-property", "installationPath",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            path = res.stdout.strip()
+        return Path(path) if path else None
+    except Exception:
+        return None
+
+
+def prepare_run_env(logger: logging.Logger) -> dict[str, str]:
+    """Build the environment for the launched Blender process.
+
+    On Windows, when Visual Studio 2022 is detected, this captures the MSVC
+    toolchain environment (``cl.exe`` + Windows SDK on ``PATH``) by running
+    ``vcvars64.bat`` and merges it into ``os.environ.copy()``. This lets
+    Cycles' ``nvcc`` CUDA JIT find ``cl.exe`` at render time without the user
+    having to launch Blender from a Developer Command Prompt.
+
+    On non-Windows or when VS is not found, returns ``os.environ.copy()``
+    unchanged (no-op).
+    """
+    env = os.environ.copy()
+    if os.name != "nt":
+        return env
+    vs_root = vs_install_path()
+    if vs_root is None:
+        logger.warning(
+            "Visual Studio 2022 not detected; Cycles CUDA JIT (nvcc) may fail to "
+            "find cl.exe. Launch from a Developer Command Prompt or install VS Build Tools."
+        )
+        return env
+    vcvars = vs_root / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+    if not vcvars.is_file():
+        logger.warning("vcvars64.bat not found at %s; skipping MSVC env injection.", vcvars)
+        return env
+    try:
+        # Run vcvars64.bat and dump the resulting environment as KEY=VALUE lines.
+        # Use shell=True so cmd.exe receives the command string verbatim (passing
+        # a list makes subprocess.list2cmdline add extra quotes that confuse
+        # cmd's quote-stripping rules). `call` lets cmd handle the quoted path.
+        res = subprocess.run(
+            f'call "{vcvars}" >nul && set',
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode != 0:
+            logger.warning("vcvars64.bat exited %s; skipping MSVC env injection. stderr: %s",
+                            res.returncode, res.stderr.strip())
+            return env
+        # Merge the vcvars environment. PATH is merged with os.pathsep so the
+        # MSVC bin dirs are prepended (taking precedence) while preserving the
+        # existing PATH. Other vars (INCLUDE, LIB, etc.) are set from vcvars.
+        # Windows env vars are case-insensitive; `set` may emit `Path` while the
+        # parent process has `PATH`. Preserve the existing key casing to avoid
+        # creating duplicate (case-variant) entries that confuse CreateProcess.
+        existing_path_key = next((k for k in env if k.lower() == "path"), "PATH")
+        for line in res.stdout.splitlines():
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key.lower() == "path":
+                env[existing_path_key] = value + os.pathsep + env.get(existing_path_key, "")
+            else:
+                env[key] = value
+        cl_exe = shutil.which("cl.exe", path=env.get(existing_path_key))
+        if cl_exe:
+            logger.info("MSVC cl.exe env injected for Cycles CUDA JIT (cl.exe at %s)", cl_exe)
+        else:
+            logger.warning("MSVC env applied but cl.exe still not found on PATH.")
+        return env
+    except subprocess.TimeoutExpired:
+        logger.warning("vcvars64.bat timed out; skipping MSVC env injection.")
+        return env
+    except Exception as exc:
+        logger.warning("Failed to capture MSVC env (%s); skipping injection.", exc)
+        return env
+
+
 def trigger_build(logger: logging.Logger, dry_run: bool = False) -> None:
     logger.info("No Blender executable found. Attempting to build Blender...")
     root = repo_root()
@@ -409,6 +530,12 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--dry-run", action="store_true", help="Print the Blender command without starting it.")
     parser.add_argument("--build", action="store_true", help="Force building Blender before starting.")
     parser.add_argument("--no-build", action="store_true", help="Do not automatically build Blender if no executable is found.")
+    parser.add_argument(
+        "--no-msvc-env",
+        action="store_true",
+        help="Do not inject the MSVC (cl.exe) environment into the launched Blender. "
+             "By default the launcher captures vcvars64.bat so Cycles CUDA JIT (nvcc) can find cl.exe.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print debug logs to the console.")
     args, blender_args = parser.parse_known_args(argv)
     if blender_args and blender_args[0] == "--":
@@ -437,7 +564,10 @@ def main(argv: list[str]) -> int:
         command.extend(["--python", str(startup_script)])
         command.extend(blender_args)
 
-        env = os.environ.copy()
+        if not args.no_msvc_env:
+            env = prepare_run_env(logger)
+        else:
+            env = os.environ.copy()
         env["BLENDER_MCP_HOST"] = args.host
         env["BLENDER_MCP_PORT"] = str(args.port)
 

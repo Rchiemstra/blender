@@ -1,0 +1,25 @@
+# Keep the Docker build context small. The Blender source tree is enormous;
+# only the MCP submodules, docs, and this docker config need to enter the image.
+
+# Exclude everything by default, then re-include what we need.
+*
+
+# Re-include the MCP submodules.
+!tools/blender_mcp/**
+!tools/blender_read_mode/**
+!tools/blender_graph_tracker/**
+
+# Re-include docs and docker config.
+!docs/**
+!docker/**
+!docker-compose.mcp-test.yml
+!scripts/**
+
+# But never copy caches, logs, or build artifacts.
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
+**/logs/**
+**/.pytest_cache/**
+**/.git/**
+artifacts/**
