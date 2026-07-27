@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: docker/mcp-test.Dockerfile
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/test_p0.py -v --junitxml=/artifacts/unit/junit.xml || python3 -m unittest tools.blender_mcp.tests.test_p0 -v"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/unit && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1.py tools/blender_mcp/tests/test_p0.py -v --timeout=120 --junitxml=/artifacts/unit/junit.xml"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
@@ -29,11 +29,11 @@ services:
 
   test-e2e:
     image: blender-mcp-test:latest
-    command: ["bash", "-lc", "python3 -m pytest tools/blender_mcp/tests/e2e -v --junitxml=/artifacts/e2e/junit.xml || echo 'e2e suite pending phase 1 implementation'"]
+    command: ["bash", "-lc", "mkdir -p /artifacts/e2e && python3 -m pytest tools/blender_mcp/tests/test_protocol_v1_server.py -v --timeout=120 --junitxml=/artifacts/e2e/junit.xml || echo 'e2e suite pending phase 1 implementation'"]
     volumes:
       - ./artifacts/docker-tests:/artifacts
     environment:
-      - PYTHONPATH=/opt/blender_mcp/tools
+      - PYTHONPATH=/opt/blender_mcp/tools/blender_mcp:/opt/blender_mcp/tools:/opt/blender_mcp/tools/blender_graph_tracker
 
   test-render:
     image: blender-mcp-test:latest

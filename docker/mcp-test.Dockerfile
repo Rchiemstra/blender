@@ -31,7 +31,8 @@ RUN apt-get update \
          libglx-mesa0 \
          curl \
          jq \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --no-cache-dir --break-system-packages "pytest>=7" pytest-timeout
 
 # Non-root runtime.
 RUN useradd --create-home --uid 1000 --shell /bin/bash blender
